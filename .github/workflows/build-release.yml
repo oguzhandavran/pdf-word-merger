@@ -1,0 +1,73 @@
+name: Build and Release .exe
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore NuGet packages
+      run: dotnet restore PDFWordMerger/PDFWordMerger.csproj
+
+    - name: Build Release
+      run: dotnet build PDFWordMerger/PDFWordMerger.csproj --configuration Release --no-restore
+
+    - name: Copy .exe to root
+      run: |
+        if (Test-Path "PDFWordMerger/bin/Release/net8.0-windows/PDFWordMerger.exe") {
+          Copy-Item "PDFWordMerger/bin/Release/net8.0-windows/PDFWordMerger.exe" -Destination "PDFWordMerger.exe"
+        }
+      shell: powershell
+
+    - name: Git config
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+
+    - name: Commit & Push .exe
+      run: |
+        if (git status --porcelain | grep -c "PDFWordMerger.exe") {
+          git add PDFWordMerger.exe
+          git commit -m "chore: auto-build .exe [skip ci]"
+          git push
+        } else {
+          echo "No changes to .exe"
+        }
+      shell: powershell
+
+    - name: Create Release (on main branch)
+      if: github.ref == 'refs/heads/main' && success()
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ github.run_number }}
+        release_name: Release v${{ github.run_number }}
+        body: |
+          Automated build from commit ${{ github.sha }}
+          Download PDFWordMerger.exe from the repository root or build artifacts.
+        draft: false
+        prerelease: false
+
+    - name: Upload .exe as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: PDFWordMerger-exe
+        path: PDFWordMerger/bin/Release/net8.0-windows/PDFWordMerger.exe
